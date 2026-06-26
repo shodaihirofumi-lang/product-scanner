@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>商品スキャナー</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #0f0f0f;
+    color: #f0f0f0;
+    min-height: 100vh;
+  }
+
+  header {
+    background: #1a1a1a;
+    padding: 16px 20px;
+    text-align: center;
+    border-bottom: 1px solid #2a2a2a;
+  }
+  header h1 { font-size: 20px; font-weight: 700; letter-spacing: 0.5px; }
+  header p { font-size: 12px; color: #888; margin-top: 2px; }
+
+  .api-banner {
+    background: #1e1a00;
+    border: 1px solid #554400;
+    border-radius: 8px;
+    margin: 16px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .api-banner.ok { background: #001e0a; border-color: #005520; }
+  .api-banner span { font-size: 13px; flex: 1; }
+  .api-banner button {
+    background: #ffcc00;
+    color: #000;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .api-banner.ok button { background: #00aa44; color: #fff; }
+
+  .tabs {
+    display: flex;
+    margin: 0 16px 16px;
+    background: #1a1a1a;
+    border-radius: 10px;
+    padding: 4px;
+    gap: 4px;
+  }
+  .tab {
+    flex: 1;
+    padding: 10px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: #888;
+    transition: all 0.2s;
+  }
+  .tab.active { background: #2a2a2a; color: #fff; }
+
+  .panel { display: none; padding: 0 16px 32px; }
+  .panel.active { display: block; }
+
+  /* バーコード */
+  #video-container {
+    position: relative;
+    width: 100%;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #000;
+    aspect-ratio: 4/3;
+  }
+  #video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .scan-line {
+    position: absolute;
+    left: 15%;
+    right: 15%;
+    top: 50%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #00ff88, transparent);
+    animation: scan 2s ease-in-out infinite;
+    box-shadow: 0 0 8px #00ff88;
+  }
+  @keyframes scan {
+    0%, 100% { top: 30%; }
+    50% { top: 70%; }
+  }
+  .scan-frame {
+    position: absolute;
+    left: 15%; right: 15%; top: 25%; bottom: 25%;
+    border: 2px solid rgba(0,255,136,0.6);
+    border-radius: 4px;
+  }
+  .scan-frame::before, .scan-frame::after {
+    content: '';
+    position: absolute;
+    width: 20px; height: 20px;
+    border-color: #00ff88;
+    border-style: solid;
+  }
+  .scan-frame::before { top: -2px; left: -2px; border-width: 3px 0 0 3px; }
+  .scan-frame::after { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; }
+
+  .btn-primary {
+    display: block;
+    width: 100%;
+    margin-top: 12px;
+    padding: 14px;
+    background: #00cc66;
+    color: #000;
+    border: none;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .btn-primary:disabled { background: #333; color: #666; cursor: not-allowed; }
+  .btn-secondary {
+    display: block;
+    width: 100%;
+    margin-top: 8px;
+    padding: 14px;
+    background: #2a2a2a;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  /* 画像認識 */
+  .image-drop {
+    width: 100%;
+    aspect-ratio: 4/3;
+    background: #1a1a1a;
+    border: 2px dashed #333;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    overflow: hidden;
+    position: relative;
+  }
+  .image-drop img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: 12px;
+  }
+  .image-drop .placeholder { text-align: center; color: #555; font-size: 14px; line-height: 1.6; }
+  .image-drop .placeholder .icon { font-size: 40px; margin-bottom: 8px; }
+
+  .image-buttons { display: flex; gap: 8px; margin-top: 12px; }
+  .image-buttons button {
+    flex: 1;
+    padding: 13px;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-camera { background: #0066ff; color: #fff; }
+  .btn-upload { background: #2a2a2a; color: #fff; }
+
+  /* 結果 */
+  .result-card {
+    margin-top: 16px;
+    background: #1a1a1a;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid #2a2a2a;
+  }
+  .result-header {
+    background: #222;
+    padding: 10px 16px;
+    font-size: 12px;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .result-body { padding: 16px; }
+  .result-name { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+  .result-brand { font-size: 13px; color: #888; margin-bottom: 12px; }
+  .result-desc { font-size: 14px; line-height: 1.7; color: #ccc; }
+  .result-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .badge {
+    background: #2a2a2a;
+    border-radius: 20px;
+    padding: 4px 10px;
+    font-size: 12px;
+    color: #aaa;
+  }
+
+  /* ローディング */
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 24px;
+    color: #888;
+    font-size: 14px;
+  }
+  .spinner {
+    width: 20px; height: 20px;
+    border: 2px solid #333;
+    border-top-color: #00cc66;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-msg {
+    margin-top: 12px;
+    padding: 12px 16px;
+    background: #1e0a0a;
+    border: 1px solid #550000;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #ff6666;
+  }
+
+  /* モーダル */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    z-index: 100;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: #1a1a1a;
+    border-radius: 20px 20px 0 0;
+    padding: 24px 20px 40px;
+    width: 100%;
+    max-width: 480px;
+  }
+  .modal h2 { font-size: 17px; margin-bottom: 6px; }
+  .modal p { font-size: 13px; color: #888; margin-bottom: 16px; line-height: 1.6; }
+  .modal input {
+    width: 100%;
+    background: #0f0f0f;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 12px 14px;
+    color: #fff;
+    font-size: 14px;
+    font-family: monospace;
+    margin-bottom: 12px;
+  }
+  .modal input:focus { outline: none; border-color: #00cc66; }
+  .modal-buttons { display: flex; gap: 8px; }
+  .modal-buttons button {
+    flex: 1;
+    padding: 13px;
+    border: none;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-save { background: #00cc66; color: #000; }
+  .btn-cancel { background: #2a2a2a; color: #fff; }
+
+  #barcode-status {
+    text-align: center;
+    font-size: 13px;
+    color: #888;
+    margin-top: 10px;
+    min-height: 20px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>商品スキャナー</h1>
+  <p>バーコード読取 & 画像認識</p>
+</header>
+
+<div class="api-banner" id="api-banner">
+  <span>⚠️ Gemini APIキーが未設定です（画像認識に必要）</span>
+  <button onclick="openModal()">設定する</button>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('barcode', this)">📷 バーコード</button>
+  <button class="tab" onclick="switchTab('image', this)">🖼️ 画像認識</button>
+</div>
+
+<!-- バーコードパネル -->
+<div class="panel active" id="panel-barcode">
+  <div id="video-container">
+    <video id="video" playsinline autoplay muted></video>
+    <div class="scan-frame"></div>
+    <div class="scan-line"></div>
+  </div>
+  <div id="barcode-status">カメラを起動してバーコードを映してください</div>
+  <button class="btn-primary" id="btn-start-scan" onclick="startScan()">カメラ起動</button>
+  <button class="btn-secondary" id="btn-stop-scan" onclick="stopScan()" style="display:none">停止</button>
+
+  <div id="barcode-result"></div>
+</div>
+
+<!-- 画像認識パネル -->
+<div class="panel" id="panel-image">
+  <div class="image-drop" id="image-drop">
+    <div class="placeholder">
+      <div class="icon">📦</div>
+      <div>商品の写真を選択または<br>カメラで撮影してください</div>
+    </div>
+  </div>
+  <div class="image-buttons">
+    <button class="btn-camera" onclick="openCamera()">📷 カメラで撮影</button>
+    <button class="btn-upload" onclick="document.getElementById('file-input').click()">📁 ファイル選択</button>
+  </div>
+  <input type="file" id="file-input" accept="image/*" style="display:none" onchange="handleFile(this)">
+  <input type="file" id="camera-input" accept="image/*" capture="environment" style="display:none" onchange="handleFile(this)">
+  <button class="btn-primary" id="btn-analyze" onclick="analyzeImage()" disabled>AI で分析する</button>
+  <div id="image-result"></div>
+</div>
+
+<!-- APIキーモーダル -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h2>Gemini APIキーを設定</h2>
+    <p>Google AI Studio（aistudio.google.com）で無料取得できます。キーはこのデバイスにのみ保存されます。</p>
+    <input type="password" id="api-key-input" placeholder="AIza..." />
+    <div class="modal-buttons">
+      <button class="btn-cancel" onclick="closeModal()">キャンセル</button>
+      <button class="btn-save" onclick="saveApiKey()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
+<script>
+// ── APIキー管理 ──────────────────────────────
+let geminiKey = localStorage.getItem('gemini_api_key') || '';
+let selectedImageBase64 = null;
+let selectedImageMime = 'image/jpeg';
+let codeReader = null;
+let scanning = false;
+
+function updateBanner() {
+  const banner = document.getElementById('api-banner');
+  if (geminiKey) {
+    banner.className = 'api-banner ok';
+    banner.innerHTML = '<span>✅ Gemini APIキー設定済み</span><button onclick="openModal()">変更</button>';
+  } else {
+    banner.className = 'api-banner';
+    banner.innerHTML = '<span>⚠️ Gemini APIキーが未設定です（画像認識に必要）</span><button onclick="openModal()">設定する</button>';
+  }
+}
+
+function openModal() {
+  document.getElementById('api-key-input').value = geminiKey;
+  document.getElementById('modal').classList.add('open');
+}
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+}
+function saveApiKey() {
+  const val = document.getElementById('api-key-input').value.trim();
+  if (!val) return;
+  geminiKey = val;
+  localStorage.setItem('gemini_api_key', val);
+  updateBanner();
+  closeModal();
+}
+
+// ── タブ切替 ──────────────────────────────
+function switchTab(name, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+  if (name !== 'barcode') stopScan();
+}
+
+// ── バーコードスキャン ──────────────────────────────
+async function startScan() {
+  if (scanning) return;
+  scanning = true;
+  document.getElementById('btn-start-scan').style.display = 'none';
+  document.getElementById('btn-stop-scan').style.display = 'block';
+  document.getElementById('barcode-status').textContent = 'スキャン中...バーコードを枠内に合わせてください';
+  document.getElementById('barcode-result').innerHTML = '';
+
+  try {
+    codeReader = new ZXing.BrowserMultiFormatReader();
+    const videoEl = document.getElementById('video');
+    await codeReader.decodeFromVideoDevice(null, videoEl, (result, err) => {
+      if (result && scanning) {
+        const code = result.getText();
+        document.getElementById('barcode-status').textContent = '読取成功: ' + code;
+        stopScan();
+        lookupBarcode(code);
+      }
+    });
+  } catch (e) {
+    document.getElementById('barcode-status').textContent = 'カメラのアクセスを許可してください';
+    stopScan();
+  }
+}
+
+function stopScan() {
+  scanning = false;
+  if (codeReader) {
+    codeReader.reset();
+    codeReader = null;
+  }
+  document.getElementById('btn-start-scan').style.display = 'block';
+  document.getElementById('btn-stop-scan').style.display = 'none';
+}
+
+async function lookupBarcode(code) {
+  const resultEl = document.getElementById('barcode-result');
+  resultEl.innerHTML = '<div class="loading"><div class="spinner"></div>商品を検索中...</div>';
+
+  try {
+    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json`);
+    const data = await res.json();
+
+    if (data.status === 1 && data.product) {
+      const p = data.product;
+      const name = p.product_name_ja || p.product_name || '（名称不明）';
+      const brand = p.brands || '';
+      const ingredients = p.ingredients_text_ja || p.ingredients_text || '';
+      const categories = p.categories_tags ? p.categories_tags.slice(0, 4).map(c => c.replace('en:', '').replace('ja:', '')) : [];
+      const nutriments = p.nutriments || {};
+
+      let nutriHTML = '';
+      if (nutriments['energy-kcal_100g']) {
+        nutriHTML = `<div class="result-badges">
+          ${nutriments['energy-kcal_100g'] ? `<span class="badge">🔥 ${Math.round(nutriments['energy-kcal_100g'])} kcal/100g</span>` : ''}
+          ${nutriments['proteins_100g'] ? `<span class="badge">💪 たんぱく質 ${nutriments['proteins_100g']}g</span>` : ''}
+          ${nutriments['fat_100g'] ? `<span class="badge">🧈 脂質 ${nutriments['fat_100g']}g</span>` : ''}
+          ${nutriments['carbohydrates_100g'] ? `<span class="badge">🌾 炭水化物 ${nutriments['carbohydrates_100g']}g</span>` : ''}
+        </div>`;
+      }
+
+      resultEl.innerHTML = `
+        <div class="result-card">
+          <div class="result-header">バーコード検索結果 — ${code}</div>
+          <div class="result-body">
+            <div class="result-name">${name}</div>
+            ${brand ? `<div class="result-brand">${brand}</div>` : ''}
+            ${ingredients ? `<div class="result-desc"><strong>原材料：</strong>${ingredients.slice(0, 200)}${ingredients.length > 200 ? '...' : ''}</div>` : ''}
+            ${nutriHTML}
+            ${categories.length ? `<div class="result-badges">${categories.map(c => `<span class="badge">${c}</span>`).join('')}</div>` : ''}
+          </div>
+        </div>`;
+    } else {
+      // DB にない場合は Gemini に聞く
+      resultEl.innerHTML = `
+        <div class="error-msg">商品DBに見つかりませんでした（JAN: ${code}）</div>
+        ${geminiKey ? '<button class="btn-secondary" style="margin-top:8px" onclick="askGeminiBarcode(\'' + code + '\')">AIに聞いてみる</button>' : '<div class="error-msg" style="margin-top:8px">APIキーを設定するとAIに聞けます</div>'}
+      `;
+    }
+  } catch (e) {
+    resultEl.innerHTML = '<div class="error-msg">通信エラーが発生しました</div>';
+  }
+}
+
+async function askGeminiBarcode(code) {
+  const resultEl = document.getElementById('barcode-result');
+  resultEl.innerHTML = '<div class="loading"><div class="spinner"></div>AIに問い合わせ中...</div>';
+
+  try {
+    const prompt = `JANコード（バーコード）: ${code} の商品について教えてください。わかる範囲で商品名、メーカー、用途・特徴を日本語で簡潔に説明してください。不明な場合はその旨を伝えてください。`;
+    const text = await callGeminiText(prompt);
+    resultEl.innerHTML = `
+      <div class="result-card">
+        <div class="result-header">AI回答 — JAN: ${code}</div>
+        <div class="result-body">
+          <div class="result-desc">${text.replace(/\n/g, '<br>')}</div>
+        </div>
+      </div>`;
+  } catch (e) {
+    resultEl.innerHTML = `<div class="error-msg">${e.message}</div>`;
+  }
+}
+
+// ── 画像認識 ──────────────────────────────
+function openCamera() {
+  document.getElementById('camera-input').click();
+}
+
+function handleFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  selectedImageMime = file.type || 'image/jpeg';
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    selectedImageBase64 = e.target.result.split(',')[1];
+    const drop = document.getElementById('image-drop');
+    drop.innerHTML = `<img src="${e.target.result}" alt="選択した商品">`;
+    document.getElementById('btn-analyze').disabled = false;
+    document.getElementById('image-result').innerHTML = '';
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+async function analyzeImage() {
+  if (!selectedImageBase64) return;
+  if (!geminiKey) {
+    document.getElementById('image-result').innerHTML = '<div class="error-msg">APIキーが設定されていません</div>';
+    return;
+  }
+
+  const resultEl = document.getElementById('image-result');
+  resultEl.innerHTML = '<div class="loading"><div class="spinner"></div>AIが画像を分析中...</div>';
+  document.getElementById('btn-analyze').disabled = true;
+
+  try {
+    const prompt = `この画像に写っている商品について、以下の形式で日本語で説明してください：
+
+【商品名】
+【カテゴリ・種類】
+【特徴・用途】
+【こんな人におすすめ】
+
+画像から読み取れる情報をもとに、できるだけ具体的に説明してください。`;
+
+    const text = await callGeminiVision(prompt, selectedImageBase64, selectedImageMime);
+    resultEl.innerHTML = `
+      <div class="result-card">
+        <div class="result-header">AI 画像分析結果</div>
+        <div class="result-body">
+          <div class="result-desc">${text.replace(/\n/g, '<br>').replace(/【(.+?)】/g, '<strong>【$1】</strong>')}</div>
+        </div>
+      </div>`;
+  } catch (e) {
+    resultEl.innerHTML = `<div class="error-msg">${e.message}</div>`;
+  } finally {
+    document.getElementById('btn-analyze').disabled = false;
+  }
+}
+
+// ── Gemini API ──────────────────────────────
+async function callGeminiText(prompt) {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }]
+      })
+    }
+  );
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error?.message || 'Gemini APIエラー');
+  return data.candidates[0].content.parts[0].text;
+}
+
+async function callGeminiVision(prompt, base64, mime) {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: mime, data: base64 } }
+          ]
+        }]
+      })
+    }
+  );
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error?.message || 'Gemini APIエラー');
+  return data.candidates[0].content.parts[0].text;
+}
+
+// ── 初期化 ──────────────────────────────
+updateBanner();
+</script>
+</body>
+</html>
